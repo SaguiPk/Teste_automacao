@@ -2,6 +2,10 @@ import streamlit as st
 from playwright.sync_api import sync_playwright, TimeoutError
 import os
 import time
+import io
+import qrcode
+import sys      # Importado para verificar o sistema operacional
+import asyncio  # Importado para aplicar a correção
 
 import subprocess
 import os
@@ -12,6 +16,7 @@ def install_playwright():
     playwright_dir = os.path.expanduser("~/.cache/ms-playwright")
     if not os.path.exists(playwright_dir) or not any("chromium" in d for d in os.listdir(playwright_dir)):
         subprocess.run(["playwright", "install", "chromium"], check=True)
+
 # Chamar no início do seu app
 install_playwright()
 
@@ -28,10 +33,12 @@ st.markdown("""
 # --- Constantes e Configurações ---
 STATE_PATH = "whatsapp_state.json"
 WHATSAPP_URL = "https://web.whatsapp.com/"
-# Para uma aplicação real, estes valores viriam de st.text_input, st.text_area, etc.
 CONTATO = "Guilherme"  # Substitua pelo nome exato do contato ou grupo
 MENSAGEM = "Teste de envio automatizado com Streamlit e Playwright! 🚀"
 
+
+# if sys.platform == "win32":
+#     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 # --- Função Principal da Automação ---
 def enviar_mensagem_whatsapp(contato, mensagem):
@@ -63,7 +70,7 @@ def enviar_mensagem_whatsapp(contato, mensagem):
             # Tenta encontrar um elemento que indica que o login já foi feito (ex: caixa de pesquisa de conversas)
             # Usamos um seletor mais específico para a caixa de pesquisa principal.
             logged_in_selector = 'div[data-testid="chat-list-search"]'
-            page.wait_for_selector(logged_in_selector, timeout=5000)  # Timeout de 15s
+            page.wait_for_selector(logged_in_selector, timeout=20000)  # Timeout de 15s
 
             placeholder.success("Login já efetuado. Pronto para enviar a mensagem!")
 
@@ -72,27 +79,34 @@ def enviar_mensagem_whatsapp(contato, mensagem):
             placeholder.warning("Sessão não encontrada. Por favor, escaneie o QR Code abaixo.")
 
             try:
+
+                page.wait_for_selector('div[data-ref]', timeout=120000)
+                qr_page = page.locator('div[data-ref]')
+                qr_data = qr_page.get_attribute('data-ref')
+
+                qr_img = qrcode.make(qr_data)
+                # Convert to bytes for Streamlit display
+                buffered = io.BytesIO()
+                qr_img.save(buffered, format="PNG")
+                st.image(buffered.getvalue(), caption="Scan this QR code with WhatsApp", width=330)
+
                 # Procura pelo QR Code na tela
-                qrcode = page.get_by_role("img", name="Scan this QR code to link a").first
-                qrcode.wait_for(state="visible", timeout=30000)
+                # qrcode_page = page.get_by_role("img", name="Scan this QR code to link a").first
+                # qrcode_page.wait_for(state="visible", timeout=30000)
 
-                # Tira um screenshot do QR Code e exibe no Streamlit
-                qr_code_path = "qrcode.png"
-                qrcode.screenshot(path=qr_code_path)
-                time.sleep(2)
-
-                placeholder.info("Aguardando a leitura do QR Code... A página será atualizada automaticamente.")
-                with st.container(width=330, key='meu_container'):
-                    st.image(qr_code_path, caption="Escaneie este QR Code com o seu celular")
+                # qrcode_binario = qrcode_page.screenshot()
+                # time.sleep(2)
+                # placeholder.info("Aguardando a leitura do QR Code... A página será atualizada automaticamente.")
+                # with st.container(width=330, key='meu_container'):
+                #     st.image(qrcode_binario, caption="Escaneie este QR Code com o seu celular")
 
                 # Aguarda o QR Code desaparecer (indicando que foi lido com sucesso)
-                qrcode.wait_for(state='hidden', timeout=120000)  # 2 minutos para escanear
-
+                qr_page.wait_for(state='hidden', timeout=120000)  # 2 minutos para escanear
                 placeholder.success("QR Code lido com sucesso! Salvando sessão...")
-
                 # Salva o estado da sessão para logins futuros
                 context.storage_state(path=STATE_PATH)
                 st.info("Sessão salva! Em logins futuros, o QR Code não será necessário.")
+                time.sleep(15)
 
             except TimeoutError:
                 st.error("Tempo esgotado. O QR Code não foi lido a tempo. Por favor, tente novamente.")
