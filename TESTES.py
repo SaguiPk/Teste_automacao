@@ -3,6 +3,18 @@ from playwright.sync_api import sync_playwright, TimeoutError
 import os
 import time
 
+import subprocess
+import os
+
+@st.cache_resource
+def install_playwright():
+    # Verifique se o Chromium já está instalado (opcional, para evitar redownload)
+    playwright_dir = os.path.expanduser("~/.cache/ms-playwright")
+    if not os.path.exists(playwright_dir) or not any("chromium" in d for d in os.listdir(playwright_dir)):
+        subprocess.run(["playwright", "install", "chromium"], check=True)
+# Chamar no início do seu app
+install_playwright()
+
 st.markdown("""
 <style>
     div[data-testid="stVerticalBlock"] div:has(div.st-key-meu_container) {
