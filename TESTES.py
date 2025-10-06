@@ -52,14 +52,38 @@ def enviar_mensagem_whatsapp(contato, mensagem):
     with sync_playwright() as p:
         # 1. Configuração do Navegador
         # Para debug local, use headless=False. Para deploy, use headless=True.
-        browser = p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-dev-shm-usage'])
+        browser = p.chromium.launch(headless=True, args=[
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu'
+            ])
 
         # 2. Carregamento da Sessão (Contexto)
         # Se o arquivo de estado existir, carrega a sessão para evitar login por QR Code
-        context = browser.new_context(storage_state=STATE_PATH) if os.path.exists(STATE_PATH) else browser.new_context()
-        page = context.new_page()
-        page.goto(WHATSAPP_URL, timeout=30000) # até 30s para carregar a página
+        if os.path.exists(STATE_PATH):
+            context = browser.new_context(storage_state=STATE_PATH,
+                                          viewport={'width': 1920, 'height': 1080},  # Viewport desktop real
+                                          user_agent='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' # User-agent real
+            ) # (Windows NT 10.0; Win64; x64)
+        else:
+            context = browser.new_context(
+                viewport={'width': 1920, 'height': 1080},  # Viewport desktop real
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' # User-agent real
+            )
 
+        page = context.new_page()
+
+        page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                    Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+                    Object.defineProperty(navigator, 'languages', { get: () => ['pt-BR', 'pt', 'en'] });
+                """)
+
+        page.goto(WHATSAPP_URL, timeout=30000, wait_until="networkidle") # até 30s para carregar a página
         # Usamos placeholders para atualizar a interface do Streamlit dinamicamente
         placeholder = st.empty()
 
@@ -83,6 +107,8 @@ def enviar_mensagem_whatsapp(contato, mensagem):
                 page.wait_for_selector('div[data-ref]', timeout=120000)
                 qr_page = page.locator('div[data-ref]')
                 qr_data = qr_page.get_attribute('data-ref')
+
+                st.write(qr_data)
 
                 qr_img = qrcode.make(qr_data)
                 # Convert to bytes for Streamlit display
